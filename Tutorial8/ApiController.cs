@@ -5,7 +5,7 @@ using Tutorial8.Services;
 namespace Tutorial8;
 
 /**
- * As the API is pretty small using a single controller for the API.
+ * As the API is pretty small using a single controller for the endpoints.
  */
 
 [ApiController]
@@ -17,12 +17,25 @@ public class ApiController(ITripService tripService, IClientService clientServic
     private readonly IClientService _clientService = clientService;
     
     [HttpGet("trips")]
-    public async Task<IActionResult> GetAllTasks()
+    
+    // Returns all the trips in JSON format. Each trip contains all the standard information needed for the trip.
+    public async Task<IActionResult> GetAllTrips()
     {
         var trips = await _tripService.GetAllTrips();
-        return Ok(trips);
+        return Ok(trips.Select(entity => new
+        {
+            id = entity.Id,
+            name = entity.Name,
+            description = entity.Description,
+            startDate = entity.StartDate,
+            endDate = entity.EndDate,
+            maxPeople = entity.MaxPeople,
+            destinationCountryName = entity.DestinationCountryName
+        }));
     }
 
+    // Returns all the trips associated with the particular client id in JSON format. In case the client doesn't have trips or does
+    // not exist, the information 'Client with id {clientId} doesn't exist or has no trips' is returned as string.
     [HttpGet("clients/{clientId}/trips")]
     public async Task<IActionResult> GetAllClientsTrips(int clientId)
     {
@@ -31,9 +44,22 @@ public class ApiController(ITripService tripService, IClientService clientServic
         {
             return BadRequest($"Client with id {clientId} doesn't exist or has no trips.");
         }
-        return Ok(trips);
+        return Ok(trips.Select(entity => new
+        {
+            id = entity.Id,
+            name = entity.Name,
+            description = entity.Description,
+            startDate = entity.StartDate,
+            endDate = entity.EndDate,
+            maxPeople = entity.MaxPeople,
+            paymentDate = entity.PaymentDate,
+            registeredAt = entity.RegisteredAt
+        }));
     }
 
+    // Allows creating a client. Requires a body to specify all the required fields if the clientDTO. Also,
+    // clientDTO has some basic validation. In case a client exists already, or the information is incorrect, the correct
+    // message will be sent with the correct status code.
     [HttpPost("clients")]
     public async Task<IActionResult> AddClient([FromBody] ClientDTO clientDto)
     {
@@ -52,6 +78,9 @@ public class ApiController(ITripService tripService, IClientService clientServic
         }
     }
 
+    // Allows registering the user for the given trip if both user and trip exist, and user have not been already signed for
+    // this trip. Also, if the trip has all places taken, the request will be refused. Returns information as string with proper status
+    // codes.
     [HttpPut("clients/{clientId}/trips/{tripId}")]
     public async Task<IActionResult> RegisterClientForTrip(int clientId, int tripId)
     {
@@ -67,12 +96,16 @@ public class ApiController(ITripService tripService, IClientService clientServic
             case IClientService.Response.TripNotExists:
                 return BadRequest($"Trip with id {tripId} doesn't exist.");
             case IClientService.Response.RegistrationExists:
-                return BadRequest($"Trip registration with id {tripId} for client with id {clientId} already exists.");
+                return BadRequest($"Trip with id {tripId} for client with id {clientId} already registered.");
+            case IClientService.Response.TooManyPeople:
+                return BadRequest($"Trip with id {tripId} has already all the places taken.");
             default:
                 return StatusCode(StatusCodes.Status500InternalServerError);
         }
     }
 
+    // Deletes given registration of the client for the given trip given that it exists. In case of incorrect
+    // information (client id, trip id etc.) returns the appropriate string message and status code.
     [HttpDelete("clients/{clientId}/trips/{tripId}")]
     public async Task<IActionResult> RemoveClientForTrip(int clientId, int tripId)
     {

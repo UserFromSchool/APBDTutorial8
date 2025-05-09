@@ -7,7 +7,7 @@ public class TripService(string connectionString) : ITripService
 {
     
     private readonly string _connectionString = connectionString;
-
+    
     public async Task<List<TripDTO>> GetAllTrips()
     {
         List<TripDTO> trips = new List<TripDTO>();
@@ -18,12 +18,12 @@ public class TripService(string connectionString) : ITripService
                     "ON Trip.IdTrip = Country_Trip.IdTrip INNER JOIN Country " +
                     "ON Country.IdCountry = Country_Trip.IdCountry";
         
-        using (SqlConnection connection = new SqlConnection(_connectionString))
-        using (SqlCommand command = new SqlCommand(query, connection))
+        using (var connection = new SqlConnection(_connectionString))
+        await using (var command = new SqlCommand(query, connection))
         {
             await connection.OpenAsync();
 
-            using (var reader = await command.ExecuteReaderAsync())
+            await using (var reader = await command.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
                 {
@@ -61,14 +61,14 @@ public class TripService(string connectionString) : ITripService
         INNER JOIN Client_Trip ON Client_Trip.IdTrip = Trip.IdTrip 
         WHERE Client_Trip.IdClient = @ClientId";
         
-        using (SqlConnection connection = new SqlConnection(_connectionString))
-        using (SqlCommand command = new SqlCommand(query, connection))
+        using (var connection = new SqlConnection(_connectionString))
+        await using (var command = new SqlCommand(query, connection))
         {
             await connection.OpenAsync();
             
             command.Parameters.AddWithValue("@ClientId", clientId);
 
-            using (var reader = await command.ExecuteReaderAsync())
+            await using (var reader = await command.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
                 {

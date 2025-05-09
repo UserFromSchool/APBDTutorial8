@@ -3,54 +3,67 @@ using Tutorial8.Models.DTO;
 
 namespace Tutorial8.Services;
 
+
+/**
+ * In a bigger project, I would separate the SQL requests into separate classes or perhaps use repositories for CRUD,
+ * so the code is more re-usable, but
+ * here since the project is pretty small, I've just use sql queries directly inside the function, since separating would require
+ * separate classes and seemed like too much effort on such a small scale.
+ */
+
 public class ClientService(string connectionString) : IClientService
 {
     private readonly string _connectionString = connectionString;
 
     public async Task<IClientService.Response> AddClient(ClientDTO clientDto)
     {
-        using (SqlConnection connection = new SqlConnection(_connectionString))
-        using (SqlCommand command = new SqlCommand("SELECT * FROM Client WHERE IdClient = @IdClient", connection))
+        using (var connection = new SqlConnection(_connectionString))
         {
             await connection.OpenAsync();
-
-            var foundClient = false;
-            command.Parameters.AddWithValue("@IdClient", clientDto.Id);
-            using (SqlDataReader reader = await command.ExecuteReaderAsync())
+            
+            // Check if a client already exists.
+            await using (var command = new SqlCommand("SELECT * FROM Client WHERE IdClient = @IdClient", connection))
             {
-                while (await reader.ReadAsync())
+                var foundClient = false;
+                command.Parameters.AddWithValue("@IdClient", clientDto.Id);
+                await using (SqlDataReader reader = await command.ExecuteReaderAsync())
                 {
-                    foundClient = true;
-                    break;
+                    while (await reader.ReadAsync())
+                    {
+                        foundClient = true;
+                        break;
+                    }
                 }
+
+                if (foundClient) return IClientService.Response.ClientExists;
             }
-
-            if (foundClient) return IClientService.Response.ClientExists;
-            command.Parameters.Clear();
-
-            var transaction = await connection.BeginTransactionAsync();
+            
+            // Create a new client
             var query = @"
             INSERT INTO Client (IdClient, FirstName, LastName, Email, Telephone, Pesel) VALUES (@IdClient, @FirstName, @LastName, @Email, @Telephone, @Pesel)
             ";
-            command.Transaction = transaction as SqlTransaction;
+            await using (var command = new SqlCommand(query, connection))
+            {
+                var transaction = await connection.BeginTransactionAsync();
+                command.Transaction = transaction as SqlTransaction;
 
-            try
-            {
-                command.CommandText = query;
-                command.Parameters.AddWithValue("@IdClient", clientDto.Id);
-                command.Parameters.AddWithValue("@FirstName", clientDto.FirstName);
-                command.Parameters.AddWithValue("@LastName", clientDto.LastName);
-                command.Parameters.AddWithValue("@Email", clientDto.Email);
-                command.Parameters.AddWithValue("@Telephone", clientDto.PhoneNumber);
-                command.Parameters.AddWithValue("@Pesel", clientDto.Pesel);
-                await command.ExecuteNonQueryAsync();
-                await transaction.CommitAsync();
-            }
-            catch (SqlException e)
-            {
-                Console.WriteLine(e.Message);
-                await transaction.RollbackAsync();
-                return IClientService.Response.InternalError;
+                try
+                {
+                    command.Parameters.AddWithValue("@IdClient", clientDto.Id);
+                    command.Parameters.AddWithValue("@FirstName", clientDto.FirstName);
+                    command.Parameters.AddWithValue("@LastName", clientDto.LastName);
+                    command.Parameters.AddWithValue("@Email", clientDto.Email);
+                    command.Parameters.AddWithValue("@Telephone", clientDto.PhoneNumber);
+                    command.Parameters.AddWithValue("@Pesel", clientDto.Pesel);
+                    await command.ExecuteNonQueryAsync();
+                    await transaction.CommitAsync();
+                }
+                catch (SqlException e)
+                {
+                    Console.WriteLine(e.Message);
+                    await transaction.RollbackAsync();
+                    return IClientService.Response.InternalError;
+                }
             }
         }
 
@@ -59,100 +72,107 @@ public class ClientService(string connectionString) : IClientService
 
     public async Task<IClientService.Response> AddRegisteredTrip(int clientId, int tripId)
     {
-        using (SqlConnection connection = new SqlConnection(_connectionString))
-        using (SqlCommand command = new SqlCommand("SELECT * FROM Client WHERE IdClient = @IdClient", connection))
+        using (var connection = new SqlConnection(_connectionString))
         {
             await connection.OpenAsync();
-
-            bool foundClient = false;
-            bool foundTrip = false;
-            bool foundRegistration = false;
-
-            // Check if a client exists
-            command.Parameters.AddWithValue("@IdClient", clientId);
-            using (var reader = await command.ExecuteReaderAsync())
-            {
-                while (await reader.ReadAsync())
-                {
-                    foundClient = true;
-                    break;
-                }
-            }
-
-            if (!foundClient) return IClientService.Response.ClientNotExists;
-            command.Parameters.Clear();
-
-            // Check if a trip exists
-            command.CommandText = "SELECT * FROM Trip WHERE IdTrip = @IdTrip";
-            command.Parameters.AddWithValue("@IdTrip", tripId);
             var maxPeople = 0;
-            using (var reader = await command.ExecuteReaderAsync())
-            {
-                while (await reader.ReadAsync())
-                {
-                    foundTrip = true;
-                    maxPeople = reader.GetInt32(reader.GetOrdinal("MaxPeople"));
-                    break;
-                }
-            }
-            if (!foundTrip) return IClientService.Response.TripNotExists;
-            command.Parameters.Clear();
             
-            // Check for clients with such trip
-            command.CommandText = "SELECT * FROM Client INNER JOIN Client_Trip ON Client_Trip.IdClient = Client.IdClient " +
-                                  "WHERE Client_Trip.IdTrip = @IdTrip";
-            command.Parameters.AddWithValue("@IdTrip", tripId);
-            using (var reader = await command.ExecuteReaderAsync())
+            // Check if a client exists
+            await using (var command = new SqlCommand("SELECT * FROM Client WHERE IdClient = @IdClient", connection))
             {
-                var count = 0;
-                while (await reader.ReadAsync())
+                var foundClient = false;
+                command.Parameters.AddWithValue("@IdClient", clientId);
+                await using (var reader = await command.ExecuteReaderAsync())
                 {
-                    count++;
+                    while (await reader.ReadAsync())
+                    {
+                        foundClient = true;
+                        break;
+                    }
                 }
 
-                if (count >= maxPeople)
-                {
-                    return IClientService.Response.TooManyPeople;
-                }
+                if (!foundClient) return IClientService.Response.ClientNotExists;
             }
-            command.Parameters.Clear();
-            
-            // Check if there is a registration for such trip already
-            command.CommandText = "SELECT * FROM Client_Trip WHERE IdTrip = @IdTrip AND IdClient = @IdClient";
-            command.Parameters.AddWithValue("@IdTrip", tripId);
-            command.Parameters.AddWithValue("@IdClient", clientId);
-            using (var reader = await command.ExecuteReaderAsync())
+
+            await using (var command = new SqlCommand("SELECT * FROM Trip WHERE IdTrip = @IdTrip", connection))
             {
-                while (await reader.ReadAsync())
+                // Check if a trip exists
+                var foundTrip = false;
+                command.Parameters.AddWithValue("@IdTrip", tripId);
+                await using (var reader = await command.ExecuteReaderAsync())
                 {
-                    foundRegistration = true;
-                    break;
+                    while (await reader.ReadAsync())
+                    {
+                        foundTrip = true;
+                        maxPeople = reader.GetInt32(reader.GetOrdinal("MaxPeople"));
+                        break;
+                    }
+                }
+
+                if (!foundTrip) return IClientService.Response.TripNotExists;
+            }
+            
+            
+            // Check for clients with such a trip and validate max people amount
+            await using (var command = new SqlCommand("SELECT * FROM Client INNER JOIN Client_Trip " +
+                                                      "ON Client_Trip.IdClient = Client.IdClient " +
+                                                      "WHERE Client_Trip.IdTrip = @IdTrip", connection))
+            {
+                command.Parameters.AddWithValue("@IdTrip", tripId);
+                await using (var reader = await command.ExecuteReaderAsync())
+                {
+                    var count = 0;
+                    while (await reader.ReadAsync())
+                    {
+                        count++;
+                    }
+
+                    if (count >= maxPeople)
+                    {
+                        return IClientService.Response.TooManyPeople;
+                    }
                 }
             }
 
-            if (foundRegistration) return IClientService.Response.RegistrationExists;
-            command.Parameters.Clear();
-            
-            // Register a new trip
-            var transaction = await connection.BeginTransactionAsync();
-            command.Transaction = transaction as SqlTransaction;
-
-            try
+            // Check if there is a registration for such a trip already
+            await using (var command = new SqlCommand("SELECT * FROM Client_Trip WHERE IdTrip = @IdTrip AND IdClient = @IdClient", connection))
             {
-                command.CommandText = @"
-                INSERT INTO Client_Trip (IdTrip, IdClient, RegisteredAt) VALUES (@IdTrip, @IdClient, @RegisteredAt)
-                ";
+                var foundRegistration = false;
                 command.Parameters.AddWithValue("@IdTrip", tripId);
                 command.Parameters.AddWithValue("@IdClient", clientId);
-                command.Parameters.AddWithValue("@RegisteredAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                await command.ExecuteNonQueryAsync();
-                await transaction.CommitAsync();
+                await using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        foundRegistration = true;
+                        break;
+                    }
+                }
+
+                if (foundRegistration) return IClientService.Response.RegistrationExists;
             }
-            catch (SqlException e)
+            
+            // Register a given client for the given trip.
+            await using (var command = new SqlCommand(@"
+            INSERT INTO Client_Trip (IdTrip, IdClient, RegisteredAt) VALUES (@IdTrip, @IdClient, @RegisteredAt)
+            ", connection))
             {
-                await transaction.RollbackAsync();
-                Console.WriteLine(e.Message);
-                return IClientService.Response.InternalError;
+                var transaction = await connection.BeginTransactionAsync();
+                command.Transaction = transaction as SqlTransaction;
+                try
+                {
+                    command.Parameters.AddWithValue("@IdTrip", tripId);
+                    command.Parameters.AddWithValue("@IdClient", clientId);
+                    command.Parameters.AddWithValue("@RegisteredAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                    await command.ExecuteNonQueryAsync();
+                    await transaction.CommitAsync();
+                }
+                catch (SqlException e)
+                {
+                    await transaction.RollbackAsync();
+                    Console.WriteLine(e.Message);
+                    return IClientService.Response.InternalError;
+                }
             }
         }
 
@@ -161,79 +181,83 @@ public class ClientService(string connectionString) : IClientService
 
     public async Task<IClientService.Response> RemoveRegisteredTrip(int clientId, int tripId)
     {
-        using (SqlConnection connection = new SqlConnection(_connectionString))
-        using (SqlCommand command = new SqlCommand("SELECT * FROM Client WHERE IdClient = @IdClient", connection))
+        using (var connection = new SqlConnection(_connectionString))
         {
             await connection.OpenAsync();
 
-            bool foundClient = false;
-            bool foundTrip = false;
-            bool foundRegistration = false;
-
             // Check if a client exists
-            command.Parameters.AddWithValue("@IdClient", clientId);
-            using (var reader = await command.ExecuteReaderAsync())
+            await using (var command = new SqlCommand("SELECT * FROM Client WHERE IdClient = @IdClient", connection))
             {
-                while (await reader.ReadAsync())
+                var foundClient = false;
+                command.Parameters.AddWithValue("@IdClient", clientId);
+                await using (var reader = await command.ExecuteReaderAsync())
                 {
-                    foundClient = true;
-                    break;
+                    while (await reader.ReadAsync())
+                    {
+                        foundClient = true;
+                        break;
+                    }
                 }
-            }
 
-            if (!foundClient) return IClientService.Response.ClientNotExists;
-            command.Parameters.Clear();
+                if (!foundClient) return IClientService.Response.ClientNotExists;
+            }
 
             // Check if a trip exists
-            command.CommandText = "SELECT * FROM Trip WHERE IdTrip = @IdTrip";
-            command.Parameters.AddWithValue("@IdTrip", tripId);
-            using (var reader = await command.ExecuteReaderAsync())
+            await using (var command = new SqlCommand("SELECT * FROM Trip WHERE IdTrip = @IdTrip", connection))
             {
-                while (await reader.ReadAsync())
+                var foundTrip = false;
+                command.Parameters.AddWithValue("@IdTrip", tripId);
+                await using (var reader = await command.ExecuteReaderAsync())
                 {
-                    foundTrip = true;
-                    break;
+                    while (await reader.ReadAsync())
+                    {
+                        foundTrip = true;
+                        break;
+                    }
                 }
-            }
 
-            if (!foundTrip) return IClientService.Response.TripNotExists;
-            command.Parameters.Clear();
+                if (!foundTrip) return IClientService.Response.TripNotExists;
+            }
             
             // Check if there even is a registration
-            command.CommandText = "SELECT * FROM Client_Trip WHERE IdTrip = @IdTrip AND IdClient = @IdClient";
-            command.Parameters.AddWithValue("@IdTrip", tripId);
-            command.Parameters.AddWithValue("@IdClient", clientId);
-            using (var reader = await command.ExecuteReaderAsync())
+            await using (var command =
+                   new SqlCommand("SELECT * FROM Client_Trip WHERE IdTrip = @IdTrip AND IdClient = @IdClient",
+                       connection))
             {
-                while (await reader.ReadAsync())
-                {
-                    foundRegistration = true;
-                    break;
-                }
-            }
-
-            if (!foundRegistration) return IClientService.Response.NoRegistration;
-            command.Parameters.Clear();
-
-            // Delete the registration.
-            var transaction = await connection.BeginTransactionAsync();
-            command.Transaction = transaction as SqlTransaction;
-
-            try
-            {
+                var foundRegistration = false;   
                 command.Parameters.AddWithValue("@IdTrip", tripId);
                 command.Parameters.AddWithValue("@IdClient", clientId);
-                command.CommandText = @"
-                DELETE Client_Trip WHERE IdTrip = @IdTrip AND IdClient = @IdClient
-                ";
-                await command.ExecuteNonQueryAsync();
-                await transaction.CommitAsync();
+                await using (var reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        foundRegistration = true;
+                        break;
+                    }
+                }
+
+                if (!foundRegistration) return IClientService.Response.NoRegistration;
             }
-            catch (SqlException e)
+
+            // Delete the registration
+            await using (var command = new SqlCommand("DELETE Client_Trip WHERE IdTrip = @IdTrip AND IdClient = @IdClient", connection))
             {
-                Console.WriteLine(e.Message);
-                await transaction.RollbackAsync();
-                return IClientService.Response.InternalError;
+                var transaction = await connection.BeginTransactionAsync();
+                command.Transaction = transaction as SqlTransaction;
+
+                try
+                {
+                    command.Parameters.AddWithValue("@IdTrip", tripId);
+                    command.Parameters.AddWithValue("@IdClient", clientId);
+                    await command.ExecuteNonQueryAsync();
+                    await transaction.CommitAsync();
+                }
+                catch (SqlException e)
+                {
+                    Console.WriteLine(e.Message);
+                    await transaction.RollbackAsync();
+                    return IClientService.Response.InternalError;
+                }
             }
         }
 
