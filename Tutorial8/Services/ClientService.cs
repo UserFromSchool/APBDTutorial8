@@ -1,5 +1,5 @@
 ﻿using Microsoft.Data.SqlClient;
-using Tutorial8.Models;
+using Tutorial8.Models.DTO;
 
 namespace Tutorial8.Services;
 
@@ -7,7 +7,7 @@ public class ClientService(string connectionString) : IClientService
 {
     private readonly string _connectionString = connectionString;
 
-    public async Task<IClientService.Response> AddClient(Client client)
+    public async Task<IClientService.Response> AddClient(ClientDTO clientDto)
     {
         using (SqlConnection connection = new SqlConnection(_connectionString))
         using (SqlCommand command = new SqlCommand("SELECT * FROM Client WHERE IdClient = @IdClient", connection))
@@ -15,7 +15,7 @@ public class ClientService(string connectionString) : IClientService
             await connection.OpenAsync();
 
             var foundClient = false;
-            command.Parameters.AddWithValue("@IdClient", client.Id);
+            command.Parameters.AddWithValue("@IdClient", clientDto.Id);
             using (SqlDataReader reader = await command.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
@@ -37,17 +37,18 @@ public class ClientService(string connectionString) : IClientService
             try
             {
                 command.CommandText = query;
-                command.Parameters.AddWithValue("@IdClient", client.Id);
-                command.Parameters.AddWithValue("@FirstName", client.FirstName);
-                command.Parameters.AddWithValue("@LastName", client.LastName);
-                command.Parameters.AddWithValue("@Email", client.Email);
-                command.Parameters.AddWithValue("@Telephone", client.PhoneNumber);
-                command.Parameters.AddWithValue("@Pesel", client.Pesel);
+                command.Parameters.AddWithValue("@IdClient", clientDto.Id);
+                command.Parameters.AddWithValue("@FirstName", clientDto.FirstName);
+                command.Parameters.AddWithValue("@LastName", clientDto.LastName);
+                command.Parameters.AddWithValue("@Email", clientDto.Email);
+                command.Parameters.AddWithValue("@Telephone", clientDto.PhoneNumber);
+                command.Parameters.AddWithValue("@Pesel", clientDto.Pesel);
                 await command.ExecuteNonQueryAsync();
                 await transaction.CommitAsync();
             }
             catch (SqlException e)
             {
+                Console.WriteLine(e.Message);
                 await transaction.RollbackAsync();
                 return IClientService.Response.InternalError;
             }
@@ -230,6 +231,7 @@ public class ClientService(string connectionString) : IClientService
             }
             catch (SqlException e)
             {
+                Console.WriteLine(e.Message);
                 await transaction.RollbackAsync();
                 return IClientService.Response.InternalError;
             }

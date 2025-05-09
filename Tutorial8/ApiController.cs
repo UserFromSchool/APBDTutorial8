@@ -1,8 +1,12 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Tutorial8.Models;
+using Tutorial8.Models.DTO;
 using Tutorial8.Services;
 
 namespace Tutorial8;
+
+/**
+ * As the API is pretty small using a single controller for the API.
+ */
 
 [ApiController]
 [Route("[controller]")]
@@ -22,7 +26,7 @@ public class ApiController(ITripService tripService, IClientService clientServic
     [HttpGet("clients/{clientId}/trips")]
     public async Task<IActionResult> GetAllClientsTrips(int clientId)
     {
-        List<Trip> trips = await _tripService.GetTripsByClientId(clientId);
+        List<TripDTO> trips = await _tripService.GetTripsByClientId(clientId);
         if (trips.Count == 0)
         {
             return BadRequest($"Client with id {clientId} doesn't exist or has no trips.");
@@ -31,14 +35,14 @@ public class ApiController(ITripService tripService, IClientService clientServic
     }
 
     [HttpPost("clients")]
-    public async Task<IActionResult> AddClient([FromBody] Client client)
+    public async Task<IActionResult> AddClient([FromBody] ClientDTO clientDto)
     {
-        if (!client.validate()) return BadRequest("Incorrect client information.");
-        var response = await _clientService.AddClient(client);
+        if (!clientDto.Validate()) return BadRequest("Incorrect client information.");
+        var response = await _clientService.AddClient(clientDto);
         switch (response)
         {
             case IClientService.Response.ClientExists:
-                return BadRequest($"Client with id {client.Id} already exists.");
+                return BadRequest($"Client with id {clientDto.Id} already exists.");
             case IClientService.Response.InternalError:
                 return StatusCode(StatusCodes.Status500InternalServerError);
             case IClientService.Response.Success:

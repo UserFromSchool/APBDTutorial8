@@ -1,6 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using Tutorial8.Models;
+﻿using Microsoft.Data.SqlClient;
+using Tutorial8.Models.DTO;
 
 namespace Tutorial8.Services;
 
@@ -9,9 +8,9 @@ public class TripService(string connectionString) : ITripService
     
     private readonly string _connectionString = connectionString;
 
-    public async Task<List<Trip>> GetAllTrips()
+    public async Task<List<TripDTO>> GetAllTrips()
     {
-        List<Trip> trips = new List<Trip>();
+        List<TripDTO> trips = new List<TripDTO>();
         
         var query = "SELECT Trip.IdTrip AS IdTrip, Trip.Name as Name, Trip.Description as Description, " +
                     "Trip.DateFrom AS DateFrom, Trip.DateTo AS DateTo, Trip.MaxPeople AS MaxPeople, Country.Name AS CountryName " +
@@ -28,7 +27,7 @@ public class TripService(string connectionString) : ITripService
             {
                 while (await reader.ReadAsync())
                 {
-                    trips.Add(new Trip
+                    trips.Add(new TripDTO
                     {
                         Id = reader.GetInt32(reader.GetOrdinal("IdTrip")),
                         Name = reader.GetString(reader.GetOrdinal("Name")),
@@ -45,9 +44,9 @@ public class TripService(string connectionString) : ITripService
         return trips;
     }
 
-    public async Task<List<Trip>> GetTripsByClientId(int clientId)
+    public async Task<List<TripDTO>> GetTripsByClientId(int clientId)
     {
-        List<Trip> trips = new List<Trip>();
+        List<TripDTO> trips = new List<TripDTO>();
         
         var query = @"
         SELECT Trip.IdTrip AS IdTrip, 
@@ -73,7 +72,7 @@ public class TripService(string connectionString) : ITripService
             {
                 while (await reader.ReadAsync())
                 {
-                    trips.Add(new Trip
+                    trips.Add(new TripDTO
                     {
                         Id = reader.GetInt32(reader.GetOrdinal("IdTrip")),
                         Name = reader.GetString(reader.GetOrdinal("Name")),

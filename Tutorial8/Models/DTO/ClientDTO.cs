@@ -1,9 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace Tutorial8.Models;
+namespace Tutorial8.Models.DTO;
 
 // Contains Client Table information
-public class Client
+public class ClientDTO
 {
     public required int Id { get; set; }
     [StringLength(120)]
@@ -17,7 +17,7 @@ public class Client
     [StringLength(120)]
     public required string Pesel { get; set; }
 
-    public bool validate()
+    public bool Validate()
     {
         if (FirstName.Length < 3) return false;
         if (LastName.Length < 3) return false;

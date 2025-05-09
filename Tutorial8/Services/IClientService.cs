@@ -1,4 +1,4 @@
-﻿using Tutorial8.Models;
+﻿using Tutorial8.Models.DTO;
 
 namespace Tutorial8.Services;
 
@@ -17,7 +17,7 @@ public interface  IClientService
         RegistrationExists
     }
 
-    public Task<Response> AddClient(Client client);
+    public Task<Response> AddClient(ClientDTO clientDto);
     
     public Task<Response> AddRegisteredTrip(int clientId, int tripId);
     

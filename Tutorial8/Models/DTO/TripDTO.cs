@@ -1,7 +1,7 @@
-﻿namespace Tutorial8.Models;
+﻿namespace Tutorial8.Models.DTO;
 
 // Contains Trip Table information
-public class Trip
+public class TripDTO
 {
     public required int Id { get; set; }
     public required string Name { get; set; }
